@@ -84,7 +84,8 @@
   [id model]
   {model (s/maybe (s/enum "cards" "dashboards" "pulses"))}
   (merge
-   (api/read-check Collection id, :archived false)
+   (-> (api/read-check Collection id, :archived false)
+       (hydrate :effective_location :effective_children :effective_ancestors))
    (collection-children model model->collection-children-fn id)))
 
 (api/defendpoint GET "/root"
@@ -93,8 +94,11 @@
   [model]
   {model (s/maybe (s/enum "cards" "dashboards" "pulses"))}
   (merge
-   {:name (tru "Root Collection")
-    :id   "root"}
+   {:name                (tru "Root Collection")
+    :id                  "root"
+    :effective_location  "/"
+    :effective_children  (collection/effective-children collection/root-collection)
+    :effective_ancestors []}
    (collection-children model model->root-collection-children-fn)))
 
 
@@ -102,27 +106,43 @@
 
 (api/defendpoint POST "/"
   "Create a new Collection."
-  [:as {{:keys [name color description]} :body}]
-  {name su/NonBlankString, color collection/hex-color-regex, description (s/maybe su/NonBlankString)}
+  [:as {{:keys [name color description location]} :body}]
+  {name        su/NonBlankString
+   color       collection/hex-color-regex
+   description (s/maybe su/NonBlankString)
+   location    (s/maybe collection/LocationPath)}
+  ;; PERMS CHECKS: For the time being, you must be a superuser to create a new Collection. If we want to change that
+  ;; in the future, we need to add a check for `location` -- if you're going to set it, we need to check that you have
+  ;; write perms for the parent Collection.
   (api/check-superuser)
+  ;; Now create the new Collection :)
   (db/insert! Collection
-    :name  name
-    :color color))
+    (merge
+     {:name        name
+      :color       color
+      :description description}
+     (when location
+       {:location location}))))
 
 (api/defendpoint PUT "/:id"
   "Modify an existing Collection, including archiving or unarchiving it."
-  [id, :as {{:keys [name color description archived], :as body} :body}]
+  [id, :as {{:keys [name color description archived location], :as body} :body}]
   {name        (s/maybe su/NonBlankString)
    color       (s/maybe collection/hex-color-regex)
    description (s/maybe su/NonBlankString)
-   archived    (s/maybe s/Bool)}
-  ;; you have to be a superuser to modify a Collection itself, but `/collection/:id/` perms are sufficient for
-  ;; adding/removing Cards
+   archived    (s/maybe s/Bool)
+   location    (s/maybe collection/LocationPath)}
+  ;; You have to be a superuser to modify a Collection itself, but `/collection/:id/` perms are sufficient for
+  ;; adding/removing Cards. As with creating a new Collection, since we require superuser status we don't need to do
+  ;; futher perms checks if you're going to set `location`, but if we change how Collection perms work in the future,
+  ;; we'll need to add appropriate write perms checks for editing the parent Collection
   (api/check-superuser)
+  ;; Check and see if this Collection exists, or throw a 404
   (api/api-let [404 "Not Found"] [collection-before-update (Collection id)]
     ;; ok, go ahead and update it! Only update keys that were specified in the `body`
     (db/update! Collection id
       (u/select-keys-when body :present [:name :color :description :archived :location]))
+    ;; Check and see if if the Collection is switiching to archived
     (when (and (not (:archived collection-before-update))
                archived)
       (when-let [alerts (seq (apply pulse/retrieve-alerts-for-cards (db/select-ids Card, :collection_id id)))]
@@ -130,7 +150,6 @@
         ;; layer which will not cause the archive notification code to fire. This will delete the relevant alerts and
         ;; notify the users just as if they had be archived individually via the card API
         (card-api/delete-alert-and-notify-archived! alerts))))
-
   ;; return the updated object
   (Collection id))
 
