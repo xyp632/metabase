@@ -280,9 +280,9 @@
         :children)))
 
 
-(s/defn effective-children ;; :- #{CollectionInstance}
-  "Return the descendants of a `collection` that should be presented to the current user as the children of this
-  Collection. This takes into account descendants that get filtered out when the current user can't see them. For
+(s/defn effective-children :- #{CollectionInstance}
+  "Return the descendant Collections of a `collection` that should be presented to the current user as the children of
+  this Collection. This takes into account descendants that get filtered out when the current user can't see them. For
   example, suppose we have some Collections with a hierarchy like this:
 
        +-> B

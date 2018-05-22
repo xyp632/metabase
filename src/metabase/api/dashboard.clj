@@ -191,7 +191,7 @@
   [id]
   (u/prog1 (-> (Dashboard id)
                api/check-404
-               (hydrate [:ordered_cards [:card :in_public_dashboard] :series])
+               (hydrate [:ordered_cards :card :series])
                api/read-check
                api/check-not-archived
                hide-unreadable-cards

@@ -16,12 +16,13 @@
              [permissions-group :as perms-group]
              [segment :refer [Segment]]
              [table :refer [Table]]]
+            [metabase.models.query.permissions :as query-perms]
             [metabase.test
              [data :as data]
              [util :as tu]]
             [metabase.test.data
-             [datasets :as datasets]
              [dataset-definitions :as defs]
+             [datasets :as datasets]
              [users :refer [create-users-if-needed! user->client]]]
             [toucan.db :as db]
             [toucan.util.test :as tt]))
@@ -501,11 +502,11 @@
 ;; native query as its source query if you have permissions to view that query, even if you aren't allowed to create
 ;; new ad-hoc SQL queries yourself.
 (expect
- #{(perms/native-read-path (data/id))}
+ #{(perms/adhoc-native-query-path (data/id))}
  (tt/with-temp Card [card {:dataset_query {:database (data/id)
                                            :type     :native
                                            :native   {:query "SELECT * FROM VENUES"}}}]
-   (card/query-perms-set (query-with-source-card card :aggregation [:count]) :write)))
+   (query-perms/perms-set (query-with-source-card card :aggregation [:count]))))
 
 ;; try this in an end-to-end fashion using the API and make sure we can save a Card if we have appropriate read
 ;; permissions for the source query
@@ -540,7 +541,7 @@
   (do-with-temp-copy-of-test-db
    (fn [db]
      (perms/revoke-permissions! (perms-group/all-users) (u/get-id db))
-     (perms/grant-permissions! (perms-group/all-users) (perms/native-read-path (u/get-id db)))
+     (perms/grant-permissions! (perms-group/all-users) (perms/adhoc-native-query-path (u/get-id db)))
      (save-card-via-API-with-native-source-query! 200 (u/get-id db))
      :ok)))
 

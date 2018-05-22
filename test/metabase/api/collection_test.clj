@@ -11,7 +11,8 @@
              [dashboard :refer [Dashboard]]
              [database :refer [Database]]
              [permissions :as perms]
-             [permissions-group :as group]
+             [permissions-group :refer [PermissionsGroup] :as group]
+             [permissions-group-membership :refer [PermissionsGroupMembership]]
              [pulse :refer [Pulse]]
              [pulse-card :refer [PulseCard]]
              [pulse-channel :refer [PulseChannel]]
@@ -141,6 +142,7 @@
       (-> ((user->client :rasta) :get 200 (str "collection/" (u/get-id collection) "?model=dashboards"))
           remove-ids-from-collection-detail))))
 
+
 ;;; ------------------------------------ Effective Ancestors & Effective Children ------------------------------------
 
 (defmacro ^:private with-collection-hierarchy
@@ -253,29 +255,26 @@
   {:name       "Root Collection"
    :id         "root"
    :cards      []
+   :dashboards []
+   :pulses     []}
+  ;; if a User doesn't have perms for the Root Collection then they don't get to see things with no collection_id
+  (with-some-children-of-collection nil
+    (-> ((user->client :rasta) :get 200 "collection/root")
+        (remove-ids-from-collection-detail :keep-collection-id? true))))
+
+;; ...but if they have read perms for the Root Collection they should get to see them
+(expect
+  {:name       "Root Collection"
+   :id         "root"
+   :cards      [{:name "Birthday Card"}]
    :dashboards [{:name "Dine & Dashboard"}]
    :pulses     [{:name "Electro-Magnetic Pulse"}]}
-  ;; create a fake DB and don't give all users perms to it
-  (tt/with-temp* [Database [db]
-                  Table    [table {:db_id (u/get-id db)}]]
-    (perms/revoke-permissions! (group/all-users) (u/get-id db))
-    ;; create the normal 'Child' objects
-    (with-some-children-of-collection nil
-      ;; move the Card into the DB that we have no perms for
-      (db/update! Card (db/select-one-id Card :name "Birthday Card")
-        :dataset_query {:database (u/get-id db), :type :query, :query {:source-table (u/get-id table)}})
-      ;; ok, a regular user shouldn't get to see it any more :(
+  (with-some-children-of-collection nil
+    (tt/with-temp* [PermissionsGroup           [group]
+                    PermissionsGroupMembership [_ {:user_id (user->id :rasta), :group_id (u/get-id group)}]]
+      (perms/grant-permissions! group (perms/collection-read-path {:metabase.models.collection/is-root? true}))
       (-> ((user->client :rasta) :get 200 "collection/root")
           (remove-ids-from-collection-detail :keep-collection-id? true)))))
-
-;; Make sure this endpoint can also filter things
-(expect
-  {:name  "Root Collection"
-   :id    "root"
-   :cards [{:name "Birthday Card"}]}
-  (with-some-children-of-collection nil
-    (-> ((user->client :crowberto) :get 200 "collection/root?model=cards")
-        (remove-ids-from-collection-detail :keep-collection-id? true))))
 
 
 ;;; ----------------------------------- Effective Children, Ancestors, & Location ------------------------------------
@@ -289,19 +288,19 @@
 
 ;; Do top-level collections show up as children of the Root Collection?
 (expect
-  {:effective_children #{{:name "A", :id true}}
+  {:effective_children  #{{:name "A", :id true}}
    :effective_ancestors []
-   :effective_location "/"}
+   :effective_location  nil}
   (with-collection-hierarchy [a b c d e f g]
     (api-get-root-collection-ancestors-and-children)))
 
 ;; ...and collapsing children should work for the Root Collection as well
 (expect
-  {:effective_children #{{:name "B", :id true}
-                         {:name "D", :id true}
-                         {:name "F", :id true}}
+  {:effective_children  #{{:name "B", :id true}
+                          {:name "D", :id true}
+                          {:name "F", :id true}}
    :effective_ancestors []
-   :effective_location "/"}
+   :effective_location  nil}
   (with-collection-hierarchy [b d e f g]
     (api-get-root-collection-ancestors-and-children)))
 

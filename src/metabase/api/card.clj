@@ -29,6 +29,7 @@
              [query :as query]
              [table :refer [Table]]
              [view-log :refer [ViewLog]]]
+            [metabase.models.query.permissions :as query-perms]
             [metabase.query-processor
              [interface :as qpi]
              [util :as qputil]]
@@ -36,6 +37,7 @@
              [cache :as cache]
              [results-metadata :as results-metadata]]
             [metabase.util.schema :as su]
+            [puppetlabs.i18n.core :refer [trs]]
             [ring.util.codec :as codec]
             [schema.core :as s]
             [toucan
@@ -160,7 +162,7 @@
 ;; TODO - do we need to hydrate the cards' collections as well?
 (defn- cards-for-filter-option [filter-option model-id label collection-slug]
   (let [cards (-> ((filter-option->fn (or filter-option :all)) model-id)
-                  (hydrate :creator :collection :in_public_dashboard)
+                  (hydrate :creator :collection)
                   hydrate-labels
                   hydrate-favorites)]
     ;; Since labels and collections are hydrated in Clojure-land we need to wait until this point to apply
@@ -216,7 +218,7 @@
   "Get `Card` with ID."
   [id]
   (u/prog1 (-> (Card id)
-               (hydrate :creator :dashboard_count :labels :can_write :collection :in_public_dashboard)
+               (hydrate :creator :dashboard_count :labels :can_write :collection)
                api/read-check)
     (events/publish-event! :card-read (assoc <> :actor_id api/*current-user-id*))))
 
@@ -234,7 +236,11 @@
    This is obviously a bit wasteful so hopefully we can avoid having to do this."
   [query]
   (binding [qpi/*disable-qp-logging* true]
-    (get-in (qp/process-query query) [:data :results_metadata :columns])))
+    (let [{:keys [status], :as results} (qp/process-query query)]
+      (if (= status :failed)
+        (log/error (trs "Error running query to determine Card result metadata:")
+                   (u/pprint-to-str 'red results))
+        (get-in results [:data :results_metadata :columns])))))
 
 (s/defn ^:private result-metadata :- (s/maybe results-metadata/ResultsMetadata)
   "Get the right results metadata for this CARD. We'll check to see whether the METADATA passed in seems valid;
@@ -265,7 +271,7 @@
    metadata_checksum      (s/maybe su/NonBlankString)}
   ;; check that we have permissions to run the query that we're trying to save
   (api/check-403 (perms/set-has-full-permissions-for-set? @api/*current-user-permissions-set*
-                   (card/query-perms-set dataset_query :write)))
+                   (query-perms/perms-set dataset_query)))
   ;; check that we have permissions for the collection we're trying to save this card to, if applicable
   (when collection_id
     (collection/check-write-perms-for-collection collection_id))
@@ -293,7 +299,7 @@
   [query]
   {:pre [(map? query)]}
   (api/check-403 (perms/set-has-full-permissions-for-set? @api/*current-user-permissions-set*
-                                                          (card/query-perms-set query :read))))
+                   (query-perms/perms-set query))))
 
 (defn- check-allowed-to-modify-query
   "If the query is being modified, check that we have data permissions to run the query."
@@ -328,7 +334,6 @@
   [card query metadata checksum]
   (when (and query
              (not= query (:dataset_query card)))
-
     (result-metadata query metadata checksum)))
 
 (defn- publish-card-update!
@@ -585,7 +590,7 @@
               :or   {constraints qp/default-query-constraints
                      context     :question}}]
   {:pre [(u/maybe? sequential? parameters)]}
-  (let [card    (api/read-check (hydrate (Card card-id) :in_public_dashboard))
+  (let [card    (api/read-check (Card card-id))
         query   (query-for-card card parameters constraints)
         options {:executed-by  api/*current-user-id*
                  :context      context

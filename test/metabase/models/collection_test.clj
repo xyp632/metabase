@@ -129,16 +129,17 @@
   it possible to compare Collection location paths in tests without having to know the randomly-generated IDs."
   [path]
   ;; split the path into IDs and then fetch a map of ID -> Name for each ID
-  (let [ids     (collection/location-path->ids path)
-        id->name (when (seq ids)
-                   (db/select-field->field :id :name Collection :id [:in ids]))]
-    ;; now loop through each ID and replace the ID part like (ex. /10/) with a name (ex. /A/)
-    (loop [path path, [id & more] ids]
-      (if-not id
-        path
-        (recur
-         (str/replace path (re-pattern (str "/" id "/")) (str "/" (id->name id) "/"))
-         more)))))
+  (when (seq path)
+    (let [ids      (collection/location-path->ids path)
+          id->name (when (seq ids)
+                     (db/select-field->field :id :name Collection :id [:in ids]))]
+      ;; now loop through each ID and replace the ID part like (ex. /10/) with a name (ex. /A/)
+      (loop [path path, [id & more] ids]
+        (if-not id
+          path
+          (recur
+           (str/replace path (re-pattern (str "/" id "/")) (str "/" (id->name id) "/"))
+           more))))))
 
 
 ;;; +----------------------------------------------------------------------------------------------------------------+
@@ -191,7 +192,6 @@
   (collection/permissions-set->visible-collection-ids
    #{"/db/1/"
      "/db/2/native/"
-     "/db/3/native/read/"
      "/db/4/schema/"
      "/db/5/schema/PUBLIC/"
      "/db/6/schema/PUBLIC/table/7/"

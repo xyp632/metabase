@@ -112,7 +112,8 @@
                       ;; ops group only has access venues table + *reading* SQL
                       (when *ops-group*
                         (perms/revoke-permissions! *ops-group* (u/get-id db))
-                        (perms/grant-native-read-permissions! *ops-group* (u/get-id db))
+                        ;; TODO - how to REWRITE ?!
+                        #_(perms/grant-native-read-permissions! *ops-group* (u/get-id db))
                         (let [venues-table (table db :venues)]
                           (perms/grant-permissions! *ops-group* (u/get-id db) (:schema venues-table) (u/get-id venues-table))))
                       (binding [*db2* db]
