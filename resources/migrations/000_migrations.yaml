@@ -4125,3 +4125,26 @@ databaseChangeLog:
             columns:
               - column:
                   name: location
+  - changeSet:
+      id: 81
+      author: camsaul
+      comment: 'Added 0.30.0'
+      changes:
+        - addColumn:
+            tableName: report_dashboard
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
+        - addColumn:
+            tableName: report_card
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
+        - addColumn:
+            tableName: pulse
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
