@@ -4060,7 +4060,7 @@ databaseChangeLog:
   - changeSet:
       id: 76
       author: senior
-      comment: 'Added 0.29.0'
+      comment: 'Added 0.30.0'
       changes:
         - addColumn:
             tableName: metabase_table
@@ -4068,3 +4068,155 @@ databaseChangeLog:
               name: fields_hash
               type: text
               remarks: 'Computed hash of all of the fields associated to this table'
+  - changeSet:
+      id: 77
+      author: senior
+      comment: 'Added 0.30.0'
+      changes:
+        - addColumn:
+            tableName: core_user
+            columns:
+              name: login_attributes
+              type: text
+              remarks: 'JSON serialized map with attributes used for row level permissions'
+  - changeSet:
+      id: 79
+      author: camsaul
+      comment: 'Added 0.30.0'
+      changes:
+        - addColumn:
+            tableName: report_dashboard
+            columns:
+              name: collection_id
+              type: int
+              remarks: 'Optional ID of Collection this Dashboard belongs to.'
+              constraints:
+                references: collection(id)
+                foreignKeyName: fk_dashboard_collection_id
+              # TODO - if someone deletes a collection, what should happen to the Dashboards that are in it? Should they
+              # get deleted as well? Or should collection_id be cleared, effectively putting them in the so-called
+              # "root" collection?
+        - createIndex:
+            tableName: report_dashboard
+            indexName: idx_dashboard_collection_id
+            columns:
+              - column:
+                  name: collection_id
+        - addColumn:
+            tableName: pulse
+            columns:
+              name: collection_id
+              type: int
+              remarks: 'Options ID of Collection this Pulse belongs to.'
+              constraints:
+                references: collection(id)
+                foreignKeyName: fk_pulse_collection_id
+        - createIndex:
+            tableName: pulse
+            indexName: idx_pulse_collection_id
+            columns:
+              - column:
+                  name: collection_id
+  - changeSet:
+      id: 80
+      author: camsaul
+      changes:
+        - addColumn:
+            tableName: collection
+            columns:
+              name: location
+              type: varchar(254)
+              remarks: 'Directory-structure path of ancestor Collections. e.g. "/1/2/" means our Parent is Collection 2, and their parent is Collection 1.'
+              constraints:
+                nullable: false
+              defaultValue: "/"
+        - createIndex:
+            tableName: collection
+            indexName: idx_collection_location
+            columns:
+              - column:
+                  name: location
+  - changeSet:
+      id: 81
+      author: camsaul
+      comment: 'Added 0.30.0'
+      changes:
+        - addColumn:
+            tableName: report_dashboard
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
+        - addColumn:
+            tableName: report_card
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
+        - addColumn:
+            tableName: pulse
+            columns:
+              name: collection_position
+              type: smallint
+              remarks: 'Optional pinned position for this item in its Collection. NULL means item is not pinned.'
+  - changeSet:
+      id: 82
+      author: senior
+      comment: 'Added 0.30.0'
+      changes:
+        - addColumn:
+            tableName: core_user
+            columns:
+              name: updated_at
+              type: datetime
+              remarks: 'When was this User last updated?'
+        - sql:
+            sql: update core_user set updated_at=date_joined
+# Switch the logic for metric/segment archiving to be more consistent with other entities in the model.
+# Similarly, add the archived flag to pulses which doesn't have one.
+  - changeSet:
+      id: 84
+      author: senior
+      comment: 'Added 0.30.0'
+      changes:
+        - renameColumn:
+            tableName: metric
+            columnDataType: boolean
+            newColumnName: archived
+            oldColumnName: is_active
+        - addDefaultValue:
+            tableName: metric
+            columnDataType: boolean
+            columnName: archived
+            defaultValueBoolean: false
+        - renameColumn:
+            tableName: segment
+            columnDataType: boolean
+            newColumnName: archived
+            oldColumnName: is_active
+        - addDefaultValue:
+            tableName: segment
+            columnDataType: boolean
+            columnName: archived
+            defaultValueBoolean: false
+        - addColumn:
+            tableName: pulse
+            columns:
+              name: archived
+              type: boolean
+              remarks: 'Has this pulse been archived?'
+              defaultValueBoolean: false
+        # Before this change, metrics/segments had opposite logic, rather than marking something as archived
+        # it was marked as active. Since the column is now an archived column, flip the boolean value
+        - sql:
+            sql: update metric set archived = not(archived)
+            sql: update segment set archived = not(archived)
+# In 0.30.0 we finally removed the long-deprecated native read permissions. Since they're no longer considered valid by
+# our permissions code, remove any entries for them so they don't cause problems.
+  - changeSet:
+      id: 86
+      author: camsaul
+      comment: 'Added 0.30.0'
+      changes:
+        - sql:
+            sql: DELETE FROM permissions WHERE object LIKE '%/native/read/'
